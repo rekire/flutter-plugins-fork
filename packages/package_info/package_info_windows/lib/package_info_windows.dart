@@ -1,7 +1,6 @@
 import 'dart:ffi';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:win32/win32.dart';
 import 'package:ffi/ffi.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -19,7 +18,9 @@ class VersionInfoQuerier {
     if (versionInfo == null) {
       return null;
     }
-    const kEnUsLanguageCode = '040904e4'; // FIXME this key should be chosen dynamically
+    // FIXME this key should be chosen dynamically.
+    // See also: https://github.com/flutter/flutter/issues/68284
+    const kEnUsLanguageCode = '040904e4';
     final keyPath = TEXT('\\StringFileInfo\\$kEnUsLanguageCode\\$key');
     final length = allocate<Uint32>();
     final valueAddress = allocate<IntPtr>();
@@ -37,90 +38,68 @@ class VersionInfoQuerier {
   }
 }
 
-class PathProviderWindows extends PlatformInterface {
+class PackageInfoWindows extends PlatformInterface {
   /// The object to use for performing VerQueryValue calls.
   @visibleForTesting
   VersionInfoQuerier versionInfoQuerier = VersionInfoQuerier();
 
-  PathProviderWindows() {
-    print('Yeah should work...');
-    MethodChannel methodChannel = MethodChannel('plugins.flutter.io/package_info');
-    methodChannel.setMethodCallHandler(handle);
-  }
+  Map<String, dynamic> getAll(){
+    final Map<String, dynamic> map = Map<String, dynamic>();
 
-  Future<Map<String, dynamic>> handle(MethodCall call) async {
-    if(call.method=='getAll') {
-      final Map<String, dynamic> map = Map<String, dynamic>();
-      map["packageName"] = 'packageName';
-      map["buildNumber"] = 'buildNumber';
+    String companyName;
+    String productName;
+    String version;
 
-      String companyName;
-      String productName;
-      String version;
-
-      final Pointer<Utf16> moduleNameBuffer =
-      allocate<Uint16>(count: MAX_PATH + 1).cast<Utf16>();
-      final Pointer<Uint32> unused = allocate<Uint32>();
-      Pointer<Uint8> infoBuffer;
-      try {
-        // Get the module name.
-        final moduleNameLength = GetModuleFileName(0, moduleNameBuffer, MAX_PATH);
-        if (moduleNameLength == 0) {
-          final error = GetLastError();
-          throw WindowsException(error);
-        }
-
-        // From that, load the VERSIONINFO resource
-        int infoSize = GetFileVersionInfoSize(moduleNameBuffer, unused);
-        if (infoSize != 0) {
-          infoBuffer = allocate<Uint8>(count: infoSize);
-          if (GetFileVersionInfo(moduleNameBuffer, 0, infoSize, infoBuffer) ==
-              0) {
-            free(infoBuffer);
-            infoBuffer = null;
-          }
-        }
-        companyName = _sanitizedDirectoryName(
-            versionInfoQuerier.getStringValue(infoBuffer, 'CompanyName'));
-        productName = _sanitizedDirectoryName(
-            versionInfoQuerier.getStringValue(infoBuffer, 'ProductName'));
-        version = _sanitizedDirectoryName(
-            versionInfoQuerier.getStringValue(infoBuffer, 'FileVersion'));
-
-        // If there was no product name, use the executable name.
-        if (productName == null) {
-          //productName = path.basenameWithoutExtension(
-          //    moduleNameBuffer.unpackString(moduleNameLength));
-        }
-      } finally {
-        free(moduleNameBuffer);
-        free(unused);
-        if (infoBuffer != null) {
-          free(infoBuffer);
-        }
+    final Pointer<Utf16> moduleNameBuffer =
+    allocate<Uint16>(count: MAX_PATH + 1).cast<Utf16>();
+    final Pointer<Uint32> unused = allocate<Uint32>();
+    Pointer<Uint8> infoBuffer;
+    try {
+      // Get the module name.
+      final moduleNameLength = GetModuleFileName(0, moduleNameBuffer, MAX_PATH);
+      if (moduleNameLength == 0) {
+        final error = GetLastError();
+        throw WindowsException(error);
       }
 
-      map["appName"] = productName;
-      map["version"] = version;
+      // From that, load the VERSIONINFO resource
+      int infoSize = GetFileVersionInfoSize(moduleNameBuffer, unused);
+      if (infoSize != 0) {
+        infoBuffer = allocate<Uint8>(count: infoSize);
+        if (GetFileVersionInfo(moduleNameBuffer, 0, infoSize, infoBuffer) ==
+            0) {
+          free(infoBuffer);
+          infoBuffer = null;
+        }
+      }
+      companyName = _sanitizedDirectoryName(
+          versionInfoQuerier.getStringValue(infoBuffer, 'CompanyName'));
+      productName = _sanitizedDirectoryName(
+          versionInfoQuerier.getStringValue(infoBuffer, 'ProductName'));
+      version = _sanitizedDirectoryName(
+          versionInfoQuerier.getStringValue(infoBuffer, 'FileVersion'));
 
-      return map;
-    } else {
-      throw UnimplementedError(call.method + '() has not been implemented.');
+      // If there was no product name, use the executable name.
+      if (productName == null) {
+        //productName = path.basenameWithoutExtension(
+        //    moduleNameBuffer.unpackString(moduleNameLength));
+      }
+    } finally {
+      free(moduleNameBuffer);
+      free(unused);
+      if (infoBuffer != null) {
+        free(infoBuffer);
+      }
     }
-  }
 
-  /// Returns the relative path string to append to the root directory returned
-  /// by Win32 APIs for application storage (such as RoamingAppDir) to get a
-  /// directory that is unique to the application.
-  ///
-  /// The convention is to use company-name\product-name\. This will use that if
-  /// possible, using the data in the VERSIONINFO resource, with the following
-  /// fallbacks:
-  /// - If the company name isn't there, that component will be dropped.
-  /// - If the product name isn't there, it will use the exe's filename (without
-  ///   extension).
-  String _getApplicationSpecificSubdirectory() {
+    // FIXME beware that this works right now, but is technically wrong. It might also
+    // change in the future: https://github.com/flutter/flutter/issues/68284
+    map["packageName"] = companyName;
+    //map["buildNumber"] = 'buildNumber';
+    map["appName"] = productName;
+    map["version"] = version;
 
+    return map;
   }
 
   /// Makes [rawString] safe as a directory component. See

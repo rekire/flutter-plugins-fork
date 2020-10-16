@@ -21,6 +21,8 @@ flutter:
 dependencies:
   flutter:
     sdk: flutter
+  package_info_windows:
+    path: ./package_info_windows
 
 dev_dependencies:
   flutter_test:

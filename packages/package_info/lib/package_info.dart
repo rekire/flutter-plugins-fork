@@ -3,8 +3,10 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:package_info_windows/package_info_windows.dart';
 
 const MethodChannel _kChannel =
     MethodChannel('plugins.flutter.io/package_info');
@@ -39,8 +41,12 @@ class PackageInfo {
       return _fromPlatform;
     }
 
-    final Map<String, dynamic> map =
-        await _kChannel.invokeMapMethod<String, dynamic>('getAll');
+    Map<String, dynamic> map;
+    if (Platform.isWindows) {
+      map = PackageInfoWindows().getAll();
+    } else {
+      map = await _kChannel.invokeMapMethod<String, dynamic>('getAll');
+    }
     _fromPlatform = PackageInfo(
       appName: map["appName"],
       packageName: map["packageName"],
